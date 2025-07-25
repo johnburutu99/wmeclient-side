@@ -97,6 +97,41 @@ export default function MessageList() {
     endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    // Mark messages as read when they become visible
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const messageId = Number(entry.target.getAttribute('data-message-id'));
+            const message = messages.find(m => m.id === messageId);
+            if (message && !message.read && message.sender !== 'You') {
+              fetch(`${process.env.NEXT_PUBLIC_API_URL}/messages/${messageId}/read`, {
+                method: 'POST'
+              }).then(() => {
+                setMessages(prev => prev.map(m => 
+                  m.id === messageId ? { ...m, read: true } : m
+                ));
+                // Notify via socket
+                socketRef.current?.emit('messageRead', { messageId });
+              });
+            }
+          }
+        });
+      },
+      {
+        threshold: 0.5,
+        root: document.querySelector('.overflow-y-auto')
+      }
+    );
+
+    // Observe all unread messages from others
+    const elements = document.querySelectorAll('[data-message-id]');
+    elements.forEach(el => observer.observe(el));
+
+    return () => observer.disconnect();
+  }, [messages]);
+
   const handleSend = async () => {
     if (!newMessage.trim() && selectedFiles.length === 0) return;
 
@@ -181,41 +216,77 @@ export default function MessageList() {
       <div className="flex-1 overflow-y-auto space-y-3 p-4 bg-gray-900/50 rounded">
         {messages.map((msg) => (
           <div 
-            key={msg.id} 
+            key={msg.id}
+            data-message-id={msg.id}
             className={`group p-3 rounded-lg max-w-lg ${
               msg.sender === 'You' 
-                ? 'bg-gold text-black ml-auto' 
-                : 'bg-gray-800 text-white'
-            }`}
+                ? 'bg-gold text-black ml-auto hover:shadow-lg hover:shadow-gold/10' 
+                : 'bg-gray-800 text-white hover:bg-gray-800/90'
+            } transition-all`}
           > 
             <div className={`text-xs mb-1 flex justify-between items-center ${
               msg.sender === 'You' ? 'text-gray-800' : 'text-gray-400'
             }`}>
-              <span>{msg.sender} • {format(new Date(msg.created_at), 'PP p')}</span>
+              <div className="flex items-center gap-2">
+                <span>{msg.sender} • {format(new Date(msg.created_at), 'PP p')}</span>
+                {msg.sender === 'You' && msg.status && (
+                  <span className="flex items-center">
+                    {msg.status === 'sending' && (
+                      <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    )}
+                    {msg.status === 'sent' && (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                    {msg.status === 'delivered' && (
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                      </svg>
+                    )}
+                    {msg.status === 'read' && (
+                      <svg className="w-3 h-3 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+                      </svg>
+                    )}
+                    {msg.status === 'error' && (
+                      <svg className="w-3 h-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    )}
+                  </span>
+                )}
+              </div>
               {!msg.read && msg.sender !== 'You' && (
-                <span className="px-1.5 py-0.5 rounded-full bg-gold text-black text-[10px] font-medium">
+                <span className="px-1.5 py-0.5 rounded-full bg-gold text-black text-[10px] font-medium animate-pulse">
                   New
                 </span>
               )}
             </div>
-            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+            {msg.content && (
+              <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+            )}
             {msg.attachments && msg.attachments.length > 0 && (
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 {msg.attachments.map((file) => (
                   <a
                     key={file.id}
                     href={file.url}
                     download={file.name}
-                    className={`text-xs py-1 px-2 rounded flex items-center gap-1 ${
+                    className={`text-xs py-1 px-2 rounded flex items-center gap-1 group/file ${
                       msg.sender === 'You'
                         ? 'bg-black/10 hover:bg-black/20'
                         : 'bg-black/20 hover:bg-black/30'
-                    }`}
+                    } transition-colors`}
                   >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-3 h-3 group-hover/file:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    {file.name}
+                    <span className="truncate max-w-[150px]">{file.name}</span>
                   </a>
                 ))}
               </div>
