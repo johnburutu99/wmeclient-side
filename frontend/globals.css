@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-gold: #C9A14D;
+  --color-black: #181818;
+  --color-white: #fff;
+}
+
+.text-gold {
+  color: var(--color-gold) !important;
+}
+.bg-gold {
+  background-color: var(--color-gold) !important;
+}
+.border-gold {
+  border-color: var(--color-gold) !important;
+}
+
+body {
+  background: #181818;
+  color: #fff;
+}
+
+a {
+  color: var(--color-gold);
+  transition: color 0.2s;
+}
+a:hover {
+  color: #fff;
+}
